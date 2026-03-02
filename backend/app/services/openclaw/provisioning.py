@@ -601,7 +601,8 @@ class OpenClawGatewayControlPlane(GatewayControlPlane):
         if agent_just_created:
             await asyncio.sleep(0.75)
 
-        # Retry agents.update a few times to handle gateway hot-reload race.
+        # Retry agents.update only when this call just created the agent.
+        # If create reported "already exists", "not found" should fail fast.
         _update_retries = 5
         _update_delay = 0.5
         for _attempt in range(_update_retries):
@@ -617,7 +618,12 @@ class OpenClawGatewayControlPlane(GatewayControlPlane):
                 )
                 break
             except OpenClawGatewayError as exc:
-                if _is_missing_agent_error(exc) and _attempt < _update_retries - 1:
+                should_retry = (
+                    agent_just_created
+                    and _is_missing_agent_error(exc)
+                    and _attempt < _update_retries - 1
+                )
+                if should_retry:
                     await asyncio.sleep(_update_delay)
                     _update_delay = min(_update_delay * 2, 4.0)
                     continue
